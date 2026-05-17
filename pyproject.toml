@@ -49,6 +49,7 @@ ci = [
   "markitdown[docx,pdf,pptx,xlsx]==0.1.5",
   "pillow",
   "pypdfium2",
+  "python-docx",
   "python-multipart",
   "uvicorn",
 ]
@@ -77,6 +78,7 @@ swallow = "swallow.cli.main:app"
 dev = [
   "httpx>=0.27",
   "pytest>=8.2",
+  "python-docx",
 ]
 
 [tool.hatch.build.targets.wheel]

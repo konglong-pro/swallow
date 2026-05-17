@@ -3753,6 +3753,7 @@ ci = [
     { name = "markitdown", extra = ["docx", "pdf", "pptx", "xlsx"] },
     { name = "pillow" },
     { name = "pypdfium2" },
+    { name = "python-docx" },
     { name = "python-multipart" },
     { name = "uvicorn" },
 ]
@@ -3782,6 +3783,7 @@ web = [
 dev = [
     { name = "httpx" },
     { name = "pytest" },
+    { name = "python-docx" },
 ]
 
 [package.metadata]
@@ -3820,6 +3822,7 @@ requires-dist = [
     { name = "pypdfium2", marker = "extra == 'all'" },
     { name = "pypdfium2", marker = "extra == 'ci'" },
     { name = "pypdfium2", marker = "extra == 'ocr'" },
+    { name = "python-docx", marker = "extra == 'ci'" },
     { name = "python-multipart", marker = "extra == 'all'" },
     { name = "python-multipart", marker = "extra == 'ci'" },
     { name = "python-multipart", marker = "extra == 'service'" },
@@ -3836,6 +3839,7 @@ provides-extras = ["markitdown", "ocr", "asr", "service", "web", "ci", "all"]
 dev = [
     { name = "httpx", specifier = ">=0.27" },
     { name = "pytest", specifier = ">=8.2" },
+    { name = "python-docx" },
 ]
 
 [[package]]
