@@ -1,0 +1,12 @@
+.git
+.github
+.pytest_cache
+.uv-cache
+.venv
+.qa-final
+raw_store
+jobs
+batch_runs
+__pycache__
+*.pyc
+*.egg-info

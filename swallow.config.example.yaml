@@ -1,0 +1,53 @@
+workers:
+  markitdown:
+    enabled: true
+    timeout_seconds: 120
+
+  paddleocr:
+    enabled: true
+    timeout_seconds: 600
+    dpi: 200
+
+  faster_whisper:
+    enabled: true
+    model: large-v3
+    device: auto
+    compute_type: default
+    ffmpeg_path: null
+    timeout_seconds: 1800
+
+  firecrawl:
+    enabled: true
+    api_key_env: FIRECRAWL_API_KEY
+    timeout_seconds: 120
+
+  crawl4ai:
+    enabled: true
+    timeout_seconds: 180
+
+  playwright:
+    enabled: true
+    headless: true
+    screenshot: true
+    timeout_seconds: 240
+
+  playwright_profile:
+    enabled: true
+    profile_dir: ~/.swallow/browser-profiles/chrome-default
+    headless: false
+    screenshot: true
+    timeout_seconds: 240
+
+  browser_capture:
+    enabled: true
+    timeout_seconds: 30
+
+  export_archive:
+    enabled: true
+    timeout_seconds: 120
+
+limits:
+  max_file_size_bytes: 104857600
+  max_pdf_size_bytes: 314572800
+  max_audio_video_size_bytes: 2147483648
+  max_html_size_bytes: 52428800

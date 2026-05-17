@@ -1,0 +1,89 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      run_performance:
+        description: "Run performance thresholds"
+        required: false
+        default: "false"
+      run_firecrawl:
+        description: "Run Firecrawl real API tests when FIRECRAWL_API_KEY is configured"
+        required: false
+        default: "false"
+
+jobs:
+  test:
+    name: tests (${{ matrix.os }}, py${{ matrix.python-version }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python-version: ["3.11"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - uses: astral-sh/setup-uv@v5
+      - name: Install CI dependencies
+        run: uv sync --dev --extra ci
+      - name: Run default test suite
+        run: uv run pytest -q -m "not network and not performance and not heavy"
+      - name: Compile sources
+        run: uv run python -m compileall -q src tests scripts
+
+  docker:
+    name: docker smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build Docker image
+        run: docker build -t swallow-ci .
+      - name: Run Docker test smoke
+        run: docker run --rm swallow-ci
+
+  performance:
+    name: performance thresholds
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_performance == 'true' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: astral-sh/setup-uv@v5
+      - name: Install CI dependencies
+        run: uv sync --dev --extra ci
+      - name: Run performance tests
+        env:
+          RUN_PERFORMANCE_TESTS: "1"
+        run: uv run pytest -q -m performance
+
+  firecrawl-real-api:
+    name: Firecrawl real API
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_firecrawl == 'true' }}
+    env:
+      FIRECRAWL_API_KEY: ${{ secrets.FIRECRAWL_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: astral-sh/setup-uv@v5
+      - name: Skip when key is absent
+        if: ${{ env.FIRECRAWL_API_KEY == '' }}
+        run: |
+          echo "FIRECRAWL_API_KEY is not configured; skipping real API tests."
+      - name: Install CI dependencies
+        if: ${{ env.FIRECRAWL_API_KEY != '' }}
+        run: uv sync --dev --extra ci
+      - name: Run Firecrawl real API tests
+        if: ${{ env.FIRECRAWL_API_KEY != '' }}
+        env:
+          RUN_FIRECRAWL_TESTS: "1"
+        run: uv run pytest -q -m network

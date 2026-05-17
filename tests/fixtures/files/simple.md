@@ -1,0 +1,3 @@
+# Swallow Fixture
+
+Swallow fixture content for ingest regression tests. Swallow fixture content for ingest regression tests. Swallow fixture content for ingest regression tests. Swallow fixture content for ingest regression tests. Swallow fixture content for ingest regression tests. Swallow fixture content for ingest regression tests. Swallow fixture content for ingest regression tests. Swallow fixture content for ingest regression tests. Swallow fixture content for ingest regression tests. Swallow fixture content for ingest regression tests. Swallow fixture content for ingest regression tests. Swallow fixture content for ingest regression tests. 

@@ -1,0 +1,1 @@
+"""Input analyzers and detectors."""

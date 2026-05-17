@@ -1,0 +1,10 @@
+.venv/
+.uv-cache/
+__pycache__/
+.pytest_cache/
+*.egg-info/
+
+raw_store/
+jobs/
+batch_runs/
+.qa-final/

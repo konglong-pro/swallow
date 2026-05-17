@@ -1,0 +1,10 @@
+<!doctype html>
+<html><head><title>Dynamic Page Fixture</title></head>
+<body>
+<main id="app">Loading...</main>
+<script>
+setTimeout(() => {
+  document.querySelector("#app").innerHTML = "<h1>Dynamic Page Fixture</h1><p>Rendered content after JavaScript.</p>";
+}, 10);
+</script>
+</body></html>
