@@ -1,0 +1,3 @@
+# swallow
+
+Initial repository bootstrap.
