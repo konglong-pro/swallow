@@ -254,7 +254,7 @@ def test_mcp_url_ingest_real_network_example_dot_com(tmp_path):
 
 
 def test_cli_mcp_serve_help_is_available():
-    result = CliRunner().invoke(app, ["mcp", "serve", "--help"])
+    result = CliRunner().invoke(app, ["mcp", "serve", "--help"], terminal_width=120)
 
     assert result.exit_code == 0, result.output
     assert "stdio" in result.output
