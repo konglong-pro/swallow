@@ -258,7 +258,11 @@ def test_cli_mcp_serve_help_is_available():
 
     assert result.exit_code == 0, result.output
     assert "stdio" in result.output
-    assert "--enable-url-ingest" in result.output
+
+    flag_result = CliRunner().invoke(app, ["mcp", "serve", "--enable-url-ingest", "--max-processes", "0"])
+    assert flag_result.exit_code != 0
+    assert "No such option" not in flag_result.output
+    assert "max-processes" in flag_result.output
 
 
 def run_mcp(server, scenario: Callable[[ClientSession], Awaitable[object]]):
