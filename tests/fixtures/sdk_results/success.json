@@ -1,0 +1,31 @@
+{
+  "job_id": "ing_success",
+  "status": "success",
+  "outputs": {
+    "markdown_path": "jobs/ing_success/document.md",
+    "document_json_path": "jobs/ing_success/ingest_document.json",
+    "trace_path": "jobs/ing_success/trace.jsonl",
+    "manifest_path": "jobs/ing_success/manifest.json",
+    "chunks_path": null
+  },
+  "document": {
+    "id": "doc_success",
+    "title": "Success fixture",
+    "source_type": "file",
+    "mime_type": "text/plain",
+    "sha256": "abc123"
+  },
+  "preview": {
+    "text": "Success preview",
+    "truncated": false,
+    "bytes_read": 15,
+    "limit_bytes": 4096
+  },
+  "content": null,
+  "warnings": [],
+  "errors": [],
+  "meta": {
+    "schema_version": 1,
+    "sdk_version": "0+fixture"
+  }
+}

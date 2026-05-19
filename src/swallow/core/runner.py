@@ -6,6 +6,7 @@ import mimetypes
 import queue
 import threading
 import time
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -22,7 +23,7 @@ from swallow.core.errors import (
 )
 from swallow.core.job_store import JobStore
 from swallow.core.markdown_writer import MarkdownWriter
-from swallow.core.models import IngestRunResult, JobMetadata, QualityReport, RawRecord, WorkerInput, WorkerResult
+from swallow.core.models import IngestRunResult, JobMetadata, JobRecord, QualityReport, RawRecord, WorkerInput, WorkerResult
 from swallow.core.quality import QUALITY_CHECKER_NAME, QUALITY_CHECKER_VERSION, check_quality
 from swallow.core.raw_store import RawStore
 from swallow.core.registry import WorkerRegistry, default_registry
@@ -35,6 +36,12 @@ from swallow.normalizers.markdown_normalizer import (
     MARKDOWN_NORMALIZER_VERSION,
     normalize_markdown_body,
 )
+
+
+@dataclass(frozen=True)
+class PreparedIngestJob:
+    raw: RawRecord
+    job: JobRecord
 
 
 class IngestRunner:
@@ -56,23 +63,47 @@ class IngestRunner:
         self.writer = writer or MarkdownWriter()
 
     def ingest_file(self, input_path: Path | str) -> IngestRunResult:
+        return self.run_prepared_job(self.prepare_file_job(input_path))
+
+    def prepare_file_job(self, input_path: Path | str) -> PreparedIngestJob:
         self._enforce_sync_size_limit(input_path)
         raw = self.raw_store.save_immutable(input_path)
-        return self._run_ingest(raw, source_type="file")
+        job = self.job_store.create_job(raw, source_type="file")
+        return PreparedIngestJob(raw=raw, job=job)
+
+    def run_prepared_job(
+        self,
+        prepared: PreparedIngestJob,
+        *,
+        plan_override: list[str] | None = None,
+    ) -> IngestRunResult:
+        return self._run_prepared_ingest(prepared.raw, prepared.job, plan_override=plan_override)
 
     def ingest_url(self, url: str) -> IngestRunResult:
+        return self.run_prepared_job(self.prepare_url_job(url))
+
+    def prepare_url_job(self, url: str) -> PreparedIngestJob:
         raw = self.raw_store.save_url_reference(url)
-        return self._run_ingest(raw, source_type="url", source_url=url)
+        job = self.job_store.create_job(raw, source_type="url", source_url=url)
+        return PreparedIngestJob(raw=raw, job=job)
 
     def ingest_browser_capture(self, input_path: Path | str) -> IngestRunResult:
+        return self.run_prepared_job(self.prepare_browser_capture_job(input_path))
+
+    def prepare_browser_capture_job(self, input_path: Path | str) -> PreparedIngestJob:
         self._enforce_sync_size_limit(input_path)
         raw = self.raw_store.save_immutable(input_path)
-        return self._run_ingest(raw, source_type="browser_capture")
+        job = self.job_store.create_job(raw, source_type="browser_capture")
+        return PreparedIngestJob(raw=raw, job=job)
 
     def ingest_archive(self, input_path: Path | str) -> IngestRunResult:
+        return self.run_prepared_job(self.prepare_archive_job(input_path))
+
+    def prepare_archive_job(self, input_path: Path | str) -> PreparedIngestJob:
         self._enforce_sync_size_limit(input_path)
         raw = self.raw_store.save_immutable(input_path)
-        return self._run_ingest(raw, source_type="export_archive")
+        job = self.job_store.create_job(raw, source_type="export_archive")
+        return PreparedIngestJob(raw=raw, job=job)
 
     def rerun_job(self, job_id: str, *, worker_name: str | None = None) -> IngestRunResult:
         metadata = self.job_store.read_job_metadata(job_id)
@@ -115,6 +146,15 @@ class IngestRunner:
         plan_override: list[str] | None = None,
     ) -> IngestRunResult:
         job = self.job_store.create_job(raw, source_type=source_type, source_url=source_url)
+        return self._run_prepared_ingest(raw, job, plan_override=plan_override)
+
+    def _run_prepared_ingest(
+        self,
+        raw: RawRecord,
+        job: JobRecord,
+        *,
+        plan_override: list[str] | None = None,
+    ) -> IngestRunResult:
         trace = TraceWriter(self.job_store.resolve_trace_path(job))
         plan: list[str] = []
         manifest_workers: list[dict[str, Any]] = []

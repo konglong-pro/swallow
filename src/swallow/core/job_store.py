@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import time
+import uuid
 from pathlib import Path
 from typing import Any
 
@@ -75,11 +77,7 @@ class JobStore:
 
     def write_job_metadata(self, metadata: JobMetadata) -> None:
         path = self.resolve_job_metadata_path(metadata.job_id)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(
-            json.dumps(metadata.model_dump(mode="json"), ensure_ascii=False, indent=2) + "\n",
-            encoding="utf-8",
-        )
+        write_json_file(path, metadata.model_dump(mode="json"))
 
     def mark_job_finished(
         self,
@@ -105,6 +103,30 @@ class JobStore:
                 }
             )
         )
+
+    def mark_job_queued(self, job: JobRecord, raw: RawRecord) -> None:
+        self.mark_job_active(job, raw, status="queued")
+
+    def mark_job_running(self, job: JobRecord, raw: RawRecord) -> None:
+        self.mark_job_active(job, raw, status="running")
+
+    def mark_job_active(self, job: JobRecord, raw: RawRecord, *, status: str) -> None:
+        metadata = self.read_job_metadata(job.id)
+        if metadata is None:
+            return
+        self.write_job_metadata(
+            metadata.model_copy(
+                update={
+                    "status": status,
+                    "document_path": None,
+                    "ingest_document_path": None,
+                    "ingest_document_id": None,
+                    "error": None,
+                    "finished_at": None,
+                }
+            )
+        )
+        self.write_manifest(job, raw, status=status)
 
     def mark_job_failed(self, job: JobRecord, error: Exception) -> None:
         metadata = self.read_job_metadata(job.id)
@@ -161,7 +183,7 @@ class JobStore:
             "created_at": job.created_at,
             "updated_at": now_iso(),
         }
-        manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        write_json_file(manifest_path, manifest)
         return manifest_path
 
     def list_jobs(self, *, limit: int | None = None) -> list[JobSummary]:
@@ -305,6 +327,20 @@ def read_job_metadata_file(path: Path) -> JobMetadata | None:
     if not path.exists():
         return None
     return JobMetadata.model_validate_json(path.read_text(encoding="utf-8"))
+
+
+def write_json_file(path: Path, payload: Any) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temp_path = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp")
+    temp_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    for attempt in range(20):
+        try:
+            temp_path.replace(path)
+            return
+        except PermissionError:
+            if attempt == 19:
+                raise
+            time.sleep(0.01)
 
 
 def read_payload_sha256(payload: dict[str, Any]) -> str | None:

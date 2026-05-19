@@ -92,13 +92,16 @@ def test_v1_file_ingest_can_read_job_document_manifest_and_trace(tmp_path):
     response = client.post(
         "/v1/ingest/file",
         files={"file": ("sample.txt", b"# Sample\n\n" + b"hello swallow " * 40, "text/plain")},
+        params={"wait": True},
     )
 
     assert response.status_code == 200, response.text
     payload = response.json()
-    job_id = payload["job"]
+    assert payload["status"] == "success"
+    job_id = payload["job_id"]
 
     inspect_response = client.get(f"/v1/jobs/{job_id}")
+    result_response = client.get(f"/v1/jobs/{job_id}/result")
     document_response = client.get(f"/v1/jobs/{job_id}/document")
     manifest_response = client.get(f"/v1/jobs/{job_id}/manifest")
     trace_response = client.get(f"/v1/jobs/{job_id}/trace")
@@ -106,14 +109,67 @@ def test_v1_file_ingest_can_read_job_document_manifest_and_trace(tmp_path):
 
     assert inspect_response.status_code == 200
     assert inspect_response.json()["job_id"] == job_id
+    assert inspect_response.json()["status"] == "success"
+    assert result_response.status_code == 200
+    assert result_response.json()["outputs"]["markdown_path"].startswith("jobs/")
     assert document_response.status_code == 200
     assert "# Sample" in document_response.text
     assert manifest_response.status_code == 200
-    assert manifest_response.json()["outputs"]["markdown"] == payload["document"]
+    assert manifest_response.json()["outputs"]["markdown"] == payload["outputs"]["markdown_path"]
     assert trace_response.status_code == 200
     assert "job_finished" in trace_response.text
     assert trace_json_response.status_code == 200
     assert trace_json_response.json()[0]["event"] == "job_finished"
+
+
+def test_v1_file_ingest_defaults_to_async_job(tmp_path):
+    client = TestClient(create_app(tmp_path))
+
+    response = client.post(
+        "/v1/ingest/file",
+        files={"file": ("sample.txt", b"# Sample\n\n" + b"hello swallow " * 40, "text/plain")},
+    )
+
+    assert response.status_code == 200, response.text
+    job = response.json()
+    assert job["job_id"].startswith("ing_")
+    assert job["status"] == "running"
+
+    result = wait_for_v1_result(client, job["job_id"])
+    assert result["status"] == "success"
+    assert result["outputs"]["markdown_path"].startswith("jobs/")
+    assert result["preview"]["text"]
+
+
+def test_v1_file_ingest_worker_failure_returns_failed_result(tmp_path):
+    disabled = IngestConfig.from_mapping({"workers": {"plain_text": {"enabled": False}}})
+    client = TestClient(create_app(tmp_path, config=disabled))
+
+    response = client.post(
+        "/v1/ingest/file",
+        params={"wait": True},
+        files={"file": ("sample.txt", b"# Sample\n\n" + b"hello swallow " * 40, "text/plain")},
+    )
+
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload["status"] == "failed"
+    assert payload["errors"][0]["code"] == "WORKER_NOT_REGISTERED"
+    assert payload["outputs"]["trace_path"].endswith("/trace.jsonl")
+    assert payload["outputs"]["manifest_path"].endswith("/manifest.json")
+
+
+def test_v1_file_ingest_reports_pre_job_size_limit(tmp_path):
+    config = IngestConfig.from_mapping({"limits": {"max_file_size_bytes": 4}})
+    client = TestClient(create_app(tmp_path, config=config))
+
+    response = client.post(
+        "/v1/ingest/file",
+        files={"file": ("sample.txt", b"too large", "text/plain")},
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"]["code"] == "INPUT_TOO_LARGE_SYNC"
 
 
 def test_legacy_ingest_file_endpoint_advertises_v1_successor(tmp_path):
@@ -335,19 +391,20 @@ def test_v1_url_browser_capture_and_archive_ingest(monkeypatch, tmp_path):
     write_chatgpt_export(archive)
     client = TestClient(create_app(tmp_path / "store"))
 
-    url_response = client.post("/v1/ingest/url", json={"url": "https://example.com/article"})
-    capture_response = client.post("/v1/ingest/browser-capture", json=sample_capture())
+    url_response = client.post("/v1/ingest/url", params={"wait": True}, json={"url": "https://example.com/article"})
+    capture_response = client.post("/v1/ingest/browser-capture", params={"wait": True}, json=sample_capture())
     archive_response = client.post(
         "/v1/ingest/archive",
+        params={"wait": True},
         files={"file": ("chatgpt-export.zip", archive.read_bytes(), "application/zip")},
     )
 
     assert url_response.status_code == 200, url_response.text
     assert capture_response.status_code == 200, capture_response.text
     assert archive_response.status_code == 200, archive_response.text
-    assert (tmp_path / "store" / url_response.json()["document"]).exists()
-    assert (tmp_path / "store" / capture_response.json()["document"]).exists()
-    assert (tmp_path / "store" / archive_response.json()["document"]).exists()
+    assert (tmp_path / "store" / url_response.json()["outputs"]["markdown_path"]).exists()
+    assert (tmp_path / "store" / capture_response.json()["outputs"]["markdown_path"]).exists()
+    assert (tmp_path / "store" / archive_response.json()["outputs"]["markdown_path"]).exists()
 
 
 def test_service_browser_capture_ingest(tmp_path):
@@ -443,3 +500,13 @@ def sample_chatgpt_conversations() -> list[dict]:
             },
         }
     ]
+
+
+def wait_for_v1_result(client: TestClient, job_id: str, *, attempts: int = 50) -> dict:
+    for _ in range(attempts):
+        response = client.get(f"/v1/jobs/{job_id}/result")
+        assert response.status_code == 200, response.text
+        payload = response.json()
+        if payload["status"] in {"success", "partial", "failed"}:
+            return payload
+    raise AssertionError(f"Job did not finish: {job_id}")

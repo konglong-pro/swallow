@@ -1,0 +1,32 @@
+{
+  "job_id": "ing_partial",
+  "status": "partial",
+  "outputs": {
+    "markdown_path": "jobs/ing_partial/document.md",
+    "document_json_path": "jobs/ing_partial/ingest_document.json",
+    "trace_path": "jobs/ing_partial/trace.jsonl",
+    "manifest_path": "jobs/ing_partial/manifest.json",
+    "chunks_path": null
+  },
+  "document": {
+    "id": "doc_partial",
+    "title": "Partial fixture",
+    "source_type": "file"
+  },
+  "preview": null,
+  "content": null,
+  "warnings": [
+    {
+      "code": "LOW_QUALITY",
+      "message": "Quality fallback was used.",
+      "stage": "quality",
+      "worker": null,
+      "details": {}
+    }
+  ],
+  "errors": [],
+  "meta": {
+    "schema_version": 1,
+    "sdk_version": "0+fixture"
+  }
+}

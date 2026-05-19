@@ -31,8 +31,12 @@ asr = [
 ]
 service = [
   "fastapi",
+  "httpx>=0.27",
   "python-multipart",
   "uvicorn",
+]
+mcp = [
+  "mcp>=1.27,<2",
 ]
 web = [
   "beautifulsoup4",
@@ -47,6 +51,7 @@ ci = [
   "httpx>=0.27",
   "markdownify",
   "markitdown[docx,pdf,pptx,xlsx]==0.1.5",
+  "mcp>=1.27,<2",
   "pillow",
   "pypdfium2",
   "python-docx",
@@ -59,9 +64,11 @@ all = [
   "faster-whisper",
   "fastapi",
   "firecrawl-py",
+  "httpx>=0.27",
   "imageio-ffmpeg",
   "markdownify",
   "markitdown[docx,pdf,pptx,xlsx]==0.1.5",
+  "mcp>=1.27,<2",
   "paddleocr",
   "paddlepaddle==2.6.2",
   "pillow",
@@ -77,6 +84,7 @@ swallow = "swallow.cli.main:app"
 [dependency-groups]
 dev = [
   "httpx>=0.27",
+  "mcp>=1.27,<2",
   "pytest>=8.2",
   "python-docx",
 ]
@@ -89,7 +97,13 @@ pythonpath = ["src"]
 testpaths = ["tests"]
 markers = [
   "unit: fast unit tests",
+  "contract: SDK and artifact contract tests",
+  "transport: SDK transport backend tests",
+  "local: local SDK backend tests",
+  "http: HTTP SDK backend tests",
+  "adapter: agent adapter tests",
   "integration: local integration tests without external network",
+  "mcp: MCP server tests",
   "heavy: tests that need heavy optional runtimes or models",
   "network: tests that call external network services",
   "security: security boundary and malicious input tests",

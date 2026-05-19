@@ -1,0 +1,20 @@
+{
+  "job_id": "ing_queued",
+  "status": "queued",
+  "outputs": {
+    "markdown_path": null,
+    "document_json_path": null,
+    "trace_path": "jobs/ing_queued/trace.jsonl",
+    "manifest_path": "jobs/ing_queued/manifest.json",
+    "chunks_path": null
+  },
+  "document": null,
+  "preview": null,
+  "content": null,
+  "warnings": [],
+  "errors": [],
+  "meta": {
+    "schema_version": 1,
+    "sdk_version": "0+fixture"
+  }
+}

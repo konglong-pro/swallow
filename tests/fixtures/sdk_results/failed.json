@@ -1,0 +1,30 @@
+{
+  "job_id": "ing_failed",
+  "status": "failed",
+  "outputs": {
+    "markdown_path": null,
+    "document_json_path": null,
+    "trace_path": "jobs/ing_failed/trace.jsonl",
+    "manifest_path": "jobs/ing_failed/manifest.json",
+    "chunks_path": null
+  },
+  "document": null,
+  "preview": null,
+  "content": null,
+  "warnings": [],
+  "errors": [
+    {
+      "code": "UNSUPPORTED_INPUT",
+      "message": "Unsupported input fixture.",
+      "stage": "router",
+      "worker": null,
+      "retryable": false,
+      "recoverable": false,
+      "details": {}
+    }
+  ],
+  "meta": {
+    "schema_version": 1,
+    "sdk_version": "0+fixture"
+  }
+}

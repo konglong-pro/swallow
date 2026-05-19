@@ -5,7 +5,7 @@ import os
 import subprocess
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 import typer
 
@@ -15,9 +15,14 @@ from swallow.core.config import load_config
 from swallow.core.errors import IngestError, format_error
 from swallow.core.job_store import JobStore, read_trace_events, render_trace_jsonl
 from swallow.core.registry import default_registry
-from swallow.core.runner import IngestRunner
+from swallow.core.runner import IngestRunner, PreparedIngestJob
+from swallow.sdk.result_mapper import map_job, map_result
 
 app = typer.Typer(no_args_is_help=True, help="Swallow ingest toolkit.")
+mcp_app = typer.Typer(no_args_is_help=True, help="MCP adapter commands.")
+queue_app = typer.Typer(no_args_is_help=True, help="Async queue commands.")
+app.add_typer(mcp_app, name="mcp")
+app.add_typer(queue_app, name="queue")
 
 
 @app.callback()
@@ -28,7 +33,7 @@ def callback(
 ) -> None:
     configure_stdio()
     try:
-        ctx.obj = {"store": store, "config": load_config(config)}
+        ctx.obj = {"store": store, "config": load_config(config), "config_path": config}
     except (FileNotFoundError, ValueError) as error:
         typer.echo(f"Config failed: {error}", err=True)
         raise typer.Exit(code=2) from error
@@ -42,57 +47,63 @@ def configure_stdio() -> None:
 
 
 @app.command(name="file")
-def file_command(ctx: typer.Context, path: Path) -> None:
-    runner = make_runner(ctx)
-    try:
-        result = runner.ingest_file(path)
-    except IngestError as error:
-        typer.echo(f"Ingest failed: {format_error(error)}", err=True)
-        raise typer.Exit(code=1) from error
-    typer.echo(f"Job: {result.job.id}")
-    typer.echo("Status: success")
-    typer.echo(f"Document: {result.document_path}")
-    typer.echo(f"Trace: {result.trace_path}")
-    if result.manifest_path:
-        typer.echo(f"Manifest: {result.manifest_path}")
+def file_command(
+    ctx: typer.Context,
+    path: Path,
+    json_output: bool = typer.Option(False, "--json", help="Print machine-readable IngestResult JSON."),
+    jsonl_output: bool = typer.Option(False, "--jsonl", help="Print machine-readable JSONL job events."),
+) -> None:
+    run_ingest_command(
+        ctx,
+        lambda runner: runner.prepare_file_job(path),
+        json_output=json_output,
+        jsonl_output=jsonl_output,
+    )
 
 
 @app.command()
-def url(ctx: typer.Context, url_value: str) -> None:
-    runner = make_runner(ctx)
-    try:
-        result = runner.ingest_url(url_value)
-    except (IngestError, ValueError) as error:
-        typer.echo(f"Ingest failed: {format_error(error)}", err=True)
-        raise typer.Exit(code=1) from error
-    typer.echo(f"Job: {result.job.id}")
-    typer.echo("Status: success")
-    typer.echo(f"Document: {result.document_path}")
-    typer.echo(f"Trace: {result.trace_path}")
-    if result.manifest_path:
-        typer.echo(f"Manifest: {result.manifest_path}")
+def url(
+    ctx: typer.Context,
+    url_value: str,
+    json_output: bool = typer.Option(False, "--json", help="Print machine-readable IngestResult JSON."),
+    jsonl_output: bool = typer.Option(False, "--jsonl", help="Print machine-readable JSONL job events."),
+) -> None:
+    run_ingest_command(
+        ctx,
+        lambda runner: runner.prepare_url_job(url_value),
+        json_output=json_output,
+        jsonl_output=jsonl_output,
+    )
 
 
 @app.command(name="browser-capture")
-def browser_capture(ctx: typer.Context, path: Path) -> None:
-    runner = make_runner(ctx)
-    try:
-        result = runner.ingest_browser_capture(path)
-    except (IngestError, FileNotFoundError, ValueError) as error:
-        typer.echo(f"Ingest failed: {format_error(error)}", err=True)
-        raise typer.Exit(code=1) from error
-    print_success(result)
+def browser_capture(
+    ctx: typer.Context,
+    path: Path,
+    json_output: bool = typer.Option(False, "--json", help="Print machine-readable IngestResult JSON."),
+    jsonl_output: bool = typer.Option(False, "--jsonl", help="Print machine-readable JSONL job events."),
+) -> None:
+    run_ingest_command(
+        ctx,
+        lambda runner: runner.prepare_browser_capture_job(path),
+        json_output=json_output,
+        jsonl_output=jsonl_output,
+    )
 
 
 @app.command()
-def archive(ctx: typer.Context, path: Path) -> None:
-    runner = make_runner(ctx)
-    try:
-        result = runner.ingest_archive(path)
-    except (IngestError, FileNotFoundError, ValueError) as error:
-        typer.echo(f"Ingest failed: {format_error(error)}", err=True)
-        raise typer.Exit(code=1) from error
-    print_success(result)
+def archive(
+    ctx: typer.Context,
+    path: Path,
+    json_output: bool = typer.Option(False, "--json", help="Print machine-readable IngestResult JSON."),
+    jsonl_output: bool = typer.Option(False, "--jsonl", help="Print machine-readable JSONL job events."),
+) -> None:
+    run_ingest_command(
+        ctx,
+        lambda runner: runner.prepare_archive_job(path),
+        json_output=json_output,
+        jsonl_output=jsonl_output,
+    )
 
 
 @app.command(name="batch")
@@ -259,9 +270,182 @@ def doctor_command(
         raise typer.Exit(code=1)
 
 
+@mcp_app.command(name="serve")
+def mcp_serve(
+    ctx: typer.Context,
+    cwd: Path | None = typer.Option(None, "--cwd", help="Working directory for the wrapped swallow CLI."),
+    allowed_roots: list[Path] | None = typer.Option(
+        None,
+        "--allowed-root",
+        help="Allowed local input root. May be repeated. Defaults to cwd and store root.",
+    ),
+    command: str = typer.Option("swallow", "--command", help="Swallow CLI command used by the MCP adapter."),
+    max_processes: int = typer.Option(2, "--max-processes", min=1, help="Maximum concurrent wrapped CLI processes."),
+    enable_url_ingest: bool = typer.Option(False, "--enable-url-ingest", help="Allow http/https URL ingest tools."),
+) -> None:
+    """Run the Swallow MCP server over stdio."""
+    try:
+        from swallow.mcp import create_mcp_server
+    except ImportError as error:
+        if getattr(error, "name", "").split(".")[0] == "mcp":
+            typer.echo("MCP support requires the mcp extra: install swallow[mcp].", err=True)
+            raise typer.Exit(code=2) from error
+        raise
+
+    server = create_mcp_server(
+        store_root=ctx.obj["store"],
+        config_path=ctx.obj["config_path"],
+        command=command,
+        cwd=cwd,
+        allowed_roots=allowed_roots,
+        max_processes=max_processes,
+        enable_url_ingest=enable_url_ingest,
+    )
+    server.run(transport="stdio")
+
+
+@queue_app.command(name="worker")
+def queue_worker_command(
+    ctx: typer.Context,
+    once: bool = typer.Option(False, "--once", help="Process at most one queued job and exit."),
+    worker_id: str | None = typer.Option(None, "--worker-id", help="Stable worker id for queue leases."),
+    lease_seconds: float = typer.Option(300.0, "--lease-seconds", min=1.0, help="Queue lease duration in seconds."),
+    heartbeat_interval: float = typer.Option(30.0, "--heartbeat-interval", min=0.1, help="Queue heartbeat interval."),
+    poll_interval: float = typer.Option(1.0, "--poll-interval", min=0.1, help="Idle poll interval for long-running workers."),
+    json_output: bool = typer.Option(False, "--json", help="Print machine-readable JSON."),
+) -> None:
+    from swallow.core.queue_worker import QueueWorker
+
+    worker = QueueWorker(
+        store_root=ctx.obj["store"],
+        config=ctx.obj["config"],
+        worker_id=worker_id,
+        lease_seconds=lease_seconds,
+        heartbeat_interval=heartbeat_interval,
+        poll_interval=poll_interval,
+    )
+    if once:
+        result = worker.run_once()
+        if json_output:
+            typer.echo(json.dumps(result, ensure_ascii=False, indent=2))
+            return
+        if result["status"] == "idle":
+            typer.echo("No queued jobs.")
+            return
+        typer.echo(f"Job: {result['job_id']}")
+        typer.echo(f"Status: {result['status']}")
+        return
+    worker.run_forever()
+
+
+@queue_app.command(name="stats")
+def queue_stats_command(
+    ctx: typer.Context,
+    json_output: bool = typer.Option(False, "--json", help="Print machine-readable JSON."),
+) -> None:
+    from swallow.core.queue_store import QueueStore
+
+    stats = QueueStore(ctx.obj["store"]).stats()
+    if json_output:
+        typer.echo(json.dumps(stats, ensure_ascii=False, indent=2))
+        return
+    typer.echo(f"Queue: {stats['queue_path']}")
+    for status, count in sorted(stats["jobs"].items()):
+        typer.echo(f"{status}: {count}")
+
+
+@queue_app.command(name="cancel")
+def queue_cancel_command(
+    ctx: typer.Context,
+    identifier: str,
+    json_output: bool = typer.Option(False, "--json", help="Print machine-readable JSON."),
+) -> None:
+    from swallow.sdk import QueueIngestClient
+
+    client = QueueIngestClient(store_root=ctx.obj["store"])
+    if identifier.startswith("batch_"):
+        result = client.cancel_batch(identifier).model_dump(mode="json")
+    else:
+        result = client.cancel_job(identifier).model_dump(mode="json")
+    if json_output:
+        typer.echo(json.dumps(result, ensure_ascii=False, indent=2))
+        return
+    typer.echo(f"Canceled: {identifier}")
+
+
 def raise_not_implemented(scope: str) -> None:
     typer.echo(f"Not implemented in this phase: {scope}", err=True)
     raise typer.Exit(code=2)
+
+
+def run_ingest_command(
+    ctx: typer.Context,
+    prepare: Callable[[IngestRunner], PreparedIngestJob],
+    *,
+    json_output: bool,
+    jsonl_output: bool,
+) -> None:
+    if json_output and jsonl_output:
+        raise typer.BadParameter("Use only one of --json or --jsonl")
+
+    machine_output = json_output or jsonl_output
+    runner = make_runner(ctx)
+    try:
+        prepared = prepare(runner)
+    except (IngestError, FileNotFoundError, ValueError) as error:
+        typer.echo(f"Ingest failed: {format_error(error)}", err=True)
+        raise typer.Exit(code=1) from error
+
+    if jsonl_output:
+        emit_jsonl_event("job_submitted", {"job": map_job(ctx.obj["store"], prepared.job.id).model_dump(mode="json")})
+
+    try:
+        result = runner.run_prepared_job(prepared)
+    except (IngestError, FileNotFoundError, ValueError) as error:
+        if machine_output:
+            sdk_result = map_result(ctx.obj["store"], prepared.job.id, content="preview")
+            emit_machine_result(sdk_result, jsonl_output=jsonl_output)
+            raise typer.Exit(code=exit_code_for_status(sdk_result.status)) from error
+        typer.echo(f"Ingest failed: {format_error(error)}", err=True)
+        raise typer.Exit(code=1) from error
+
+    if machine_output:
+        sdk_result = map_result(ctx.obj["store"], result.job.id, content="preview")
+        emit_machine_result(sdk_result, jsonl_output=jsonl_output)
+        raise typer.Exit(code=exit_code_for_status(sdk_result.status))
+
+    print_success(result)
+
+
+def emit_machine_result(result, *, jsonl_output: bool) -> None:
+    payload = result.model_dump(mode="json")
+    if jsonl_output:
+        emit_jsonl_event(event_name_for_status(result.status), {"result": payload})
+        return
+    typer.echo(json.dumps(payload, ensure_ascii=False, indent=2))
+
+
+def emit_jsonl_event(event: str, payload: dict[str, Any]) -> None:
+    sys.stdout.write(json.dumps({"event": event, **payload}, ensure_ascii=False) + "\n")
+    sys.stdout.flush()
+
+
+def event_name_for_status(status: str) -> str:
+    if status == "success":
+        return "job_finished"
+    if status == "partial":
+        return "job_partial"
+    if status == "failed":
+        return "job_failed"
+    return "job_updated"
+
+
+def exit_code_for_status(status: str) -> int:
+    if status == "success":
+        return 0
+    if status == "partial":
+        return 2
+    return 1
 
 
 def print_success(result) -> None:

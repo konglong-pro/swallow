@@ -33,7 +33,7 @@ class JobMetadata(BaseModel):
     source_url: str | None = None
     original_filename: str
     mime_type: str | None = None
-    status: Literal["running", "success", "failed"] = "running"
+    status: Literal["queued", "running", "success", "failed"] = "running"
     job_dir: str
     trace_path: str
     document_path: str | None = None
@@ -47,7 +47,7 @@ class JobMetadata(BaseModel):
 
 class JobSummary(BaseModel):
     job_id: str
-    status: Literal["running", "success", "failed", "unknown"]
+    status: Literal["queued", "running", "success", "failed", "unknown"]
     raw_id: str | None = None
     source_type: str | None = None
     source_url: str | None = None

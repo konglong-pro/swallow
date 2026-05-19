@@ -5,8 +5,10 @@ import os
 import re
 import shutil
 import tempfile
+from contextlib import asynccontextmanager
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path, PurePosixPath, PureWindowsPath
-from typing import Any
+from typing import Any, Callable
 
 from fastapi import Body, FastAPI, File, HTTPException, Query, Response, UploadFile
 from fastapi.responses import PlainTextResponse
@@ -17,7 +19,10 @@ from swallow.core.errors import IngestError, InputError, error_to_dict
 from swallow.core.job_store import JobStore, read_trace_events, render_trace_jsonl
 from swallow.core.models import IngestRunResult
 from swallow.core.registry import default_registry
-from swallow.core.runner import IngestRunner
+from swallow.core.runner import IngestRunner, PreparedIngestJob
+from swallow.sdk.errors import IngestSandboxError, IngestSdkConfigError, IngestSdkJobNotFound, IngestSdkProtocolError
+from swallow.sdk.result_mapper import map_job, map_result
+from swallow.sdk.security import validate_ingest_url
 
 
 class UrlIngestRequest(BaseModel):
@@ -36,9 +41,18 @@ def create_app(
 ) -> FastAPI:
     root = Path(store_root or os.getenv("SWALLOW_STORE", "."))
     ingest_config = config or load_config(config_path)
-    app = FastAPI(title="Swallow Ingest API", version="0.1.0")
+
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        try:
+            yield
+        finally:
+            app.state.executor.shutdown(wait=False)
+
+    app = FastAPI(title="Swallow Ingest API", version="0.1.0", lifespan=lifespan)
     app.state.store_root = root
     app.state.config = ingest_config
+    app.state.executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="swallow-service")
 
     @app.get("/health")
     def health() -> dict[str, str]:
@@ -49,8 +63,8 @@ def create_app(
         return default_registry(app.state.config).describe()
 
     @app.post("/v1/ingest/file")
-    async def ingest_file_v1(file: UploadFile = File(...)) -> dict[str, Any]:
-        return await ingest_file_impl(app, file)
+    async def ingest_file_v1(wait: bool = Query(default=False), file: UploadFile = File(...)) -> dict[str, Any]:
+        return await submit_file_impl(app, file, wait=wait)
 
     @app.post("/ingest/file")
     async def ingest_file_legacy(response: Response, file: UploadFile = File(...)) -> dict[str, Any]:
@@ -58,8 +72,8 @@ def create_app(
         return await ingest_file_impl(app, file)
 
     @app.post("/v1/ingest/url")
-    def ingest_url_v1(request: UrlIngestRequest) -> dict[str, Any]:
-        return ingest_url_impl(app, request)
+    def ingest_url_v1(request: UrlIngestRequest, wait: bool = Query(default=False)) -> dict[str, Any]:
+        return submit_url_impl(app, request, wait=wait)
 
     @app.post("/ingest/url")
     def ingest_url_legacy(request: UrlIngestRequest, response: Response) -> dict[str, Any]:
@@ -67,8 +81,8 @@ def create_app(
         return ingest_url_impl(app, request)
 
     @app.post("/v1/ingest/browser-capture")
-    def ingest_browser_capture_v1(payload: dict[str, Any]) -> dict[str, Any]:
-        return ingest_browser_capture_impl(app, payload)
+    def ingest_browser_capture_v1(payload: dict[str, Any], wait: bool = Query(default=False)) -> dict[str, Any]:
+        return submit_browser_capture_impl(app, payload, wait=wait)
 
     @app.post("/ingest/browser-capture")
     def ingest_browser_capture_legacy(payload: dict[str, Any], response: Response) -> dict[str, Any]:
@@ -76,8 +90,8 @@ def create_app(
         return ingest_browser_capture_impl(app, payload)
 
     @app.post("/v1/ingest/archive")
-    async def ingest_archive_v1(file: UploadFile = File(...)) -> dict[str, Any]:
-        return await ingest_archive_impl(app, file)
+    async def ingest_archive_v1(wait: bool = Query(default=False), file: UploadFile = File(...)) -> dict[str, Any]:
+        return await submit_archive_impl(app, file, wait=wait)
 
     @app.post("/ingest/archive")
     async def ingest_archive_legacy(response: Response, file: UploadFile = File(...)) -> dict[str, Any]:
@@ -104,12 +118,15 @@ def create_app(
         return [summary.model_dump(mode="json") for summary in summaries]
 
     @app.get("/v1/jobs/{job_id}")
-    def inspect_job_v1(
+    def get_job_v1(job_id: str) -> dict[str, Any]:
+        return render_sdk_call(lambda: map_job(root, job_id))
+
+    @app.get("/v1/jobs/{job_id}/result")
+    def get_job_result_v1(
         job_id: str,
-        raw: bool = Query(default=False),
-        artifacts: bool = Query(default=False),
+        content: str = Query(default="preview", pattern="^(none|preview|full)$"),
     ) -> dict[str, Any]:
-        return inspect_job_impl(root, job_id, raw=raw, artifacts=artifacts)
+        return render_sdk_call(lambda: map_result(root, job_id, content=content))
 
     @app.get("/jobs/{job_id}")
     def inspect_job_legacy(
@@ -165,8 +182,22 @@ async def ingest_file_impl(app: FastAPI, file: UploadFile) -> dict[str, Any]:
         cleanup_temp_upload(path)
 
 
+async def submit_file_impl(app: FastAPI, file: UploadFile, *, wait: bool) -> dict[str, Any]:
+    path = await write_upload_to_temp(file)
+    try:
+        return submit_and_render(app, lambda runner: runner.prepare_file_job(path), wait=wait)
+    finally:
+        cleanup_temp_upload(path)
+
+
 def ingest_url_impl(app: FastAPI, request: UrlIngestRequest) -> dict[str, Any]:
-    return run_and_render(app, lambda runner: runner.ingest_url(request.url))
+    url = validate_service_url(request.url)
+    return run_and_render(app, lambda runner: runner.ingest_url(url))
+
+
+def submit_url_impl(app: FastAPI, request: UrlIngestRequest, *, wait: bool) -> dict[str, Any]:
+    url = validate_service_url(request.url)
+    return submit_and_render(app, lambda runner: runner.prepare_url_job(url), wait=wait)
 
 
 def ingest_browser_capture_impl(app: FastAPI, payload: dict[str, Any]) -> dict[str, Any]:
@@ -177,10 +208,26 @@ def ingest_browser_capture_impl(app: FastAPI, payload: dict[str, Any]) -> dict[s
         path.unlink(missing_ok=True)
 
 
+def submit_browser_capture_impl(app: FastAPI, payload: dict[str, Any], *, wait: bool) -> dict[str, Any]:
+    path = write_json_to_temp(payload, suffix=".json")
+    try:
+        return submit_and_render(app, lambda runner: runner.prepare_browser_capture_job(path), wait=wait)
+    finally:
+        path.unlink(missing_ok=True)
+
+
 async def ingest_archive_impl(app: FastAPI, file: UploadFile) -> dict[str, Any]:
     path = await write_upload_to_temp(file)
     try:
         return run_and_render(app, lambda runner: runner.ingest_archive(path))
+    finally:
+        cleanup_temp_upload(path)
+
+
+async def submit_archive_impl(app: FastAPI, file: UploadFile, *, wait: bool) -> dict[str, Any]:
+    path = await write_upload_to_temp(file)
+    try:
+        return submit_and_render(app, lambda runner: runner.prepare_archive_job(path), wait=wait)
     finally:
         cleanup_temp_upload(path)
 
@@ -215,6 +262,16 @@ def read_trace_impl(root: Path, job_id: str, *, tail: int | None, json_output: b
     return PlainTextResponse(path.read_text(encoding="utf-8"))
 
 
+def validate_service_url(url: str) -> str:
+    try:
+        return validate_ingest_url(url)
+    except IngestSandboxError as error:
+        raise HTTPException(
+            status_code=400,
+            detail=error_to_dict(InputError(str(error), code="SDK_SANDBOX_REJECTED")),
+        ) from error
+
+
 def mark_deprecated(response: Response, successor_path: str) -> None:
     response.headers["Deprecation"] = "true"
     response.headers["Link"] = f"<{successor_path}>; rel=\"successor-version\""
@@ -231,6 +288,50 @@ def run_and_render(app: FastAPI, run: Any) -> dict[str, Any]:
     except (IngestError, FileNotFoundError, ValueError) as error:
         raise http_exception_from_error(error) from error
     return render_run_result(result)
+
+
+def submit_and_render(
+    app: FastAPI,
+    prepare: Callable[[IngestRunner], PreparedIngestJob],
+    *,
+    wait: bool,
+) -> dict[str, Any]:
+    runner = IngestRunner(store_root=app.state.store_root, config=app.state.config)
+    try:
+        prepared = prepare(runner)
+    except (IngestError, FileNotFoundError, ValueError) as error:
+        raise http_exception_from_error(error) from error
+
+    if wait:
+        return run_prepared_and_render_sdk(app, prepared)
+
+    app.state.executor.submit(run_prepared_background, app, prepared)
+    return map_job(app.state.store_root, prepared.job.id).model_dump(mode="json")
+
+
+def run_prepared_and_render_sdk(app: FastAPI, prepared: PreparedIngestJob) -> dict[str, Any]:
+    try:
+        IngestRunner(store_root=app.state.store_root, config=app.state.config).run_prepared_job(prepared)
+    except (IngestError, FileNotFoundError, ValueError):
+        pass
+    return map_result(app.state.store_root, prepared.job.id, content="preview").model_dump(mode="json")
+
+
+def run_prepared_background(app: FastAPI, prepared: PreparedIngestJob) -> None:
+    try:
+        IngestRunner(store_root=app.state.store_root, config=app.state.config).run_prepared_job(prepared)
+    except Exception:
+        pass
+
+
+def render_sdk_call(call: Callable[[], Any]) -> dict[str, Any]:
+    try:
+        value = call()
+    except IngestSdkJobNotFound as error:
+        raise not_found(str(error), code="JOB_NOT_FOUND") from error
+    except (IngestSdkConfigError, IngestSdkProtocolError) as error:
+        raise HTTPException(status_code=400, detail=error_to_dict(error)) from error
+    return value.model_dump(mode="json") if hasattr(value, "model_dump") else value
 
 
 def http_exception_from_error(error: Exception) -> HTTPException:
