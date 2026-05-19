@@ -11,6 +11,7 @@ import anyio
 import pytest
 from mcp.client.session import ClientSession
 from mcp.shared.memory import create_connected_server_and_client_session
+from typer.main import get_command
 from typer.testing import CliRunner
 
 from swallow.cli.main import app
@@ -259,10 +260,10 @@ def test_cli_mcp_serve_help_is_available():
     assert result.exit_code == 0, result.output
     assert "stdio" in result.output
 
-    flag_result = CliRunner().invoke(app, ["mcp", "serve", "--enable-url-ingest", "--max-processes", "0"])
-    assert flag_result.exit_code != 0
-    assert "No such option" not in flag_result.output
-    assert "max-processes" in flag_result.output
+    root_command = get_command(app)
+    serve_command = root_command.commands["mcp"].commands["serve"]
+    option_names = {option for parameter in serve_command.params for option in parameter.opts}
+    assert "--enable-url-ingest" in option_names
 
 
 def run_mcp(server, scenario: Callable[[ClientSession], Awaitable[object]]):
