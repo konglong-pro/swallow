@@ -15,6 +15,7 @@ from typer.main import get_command
 from typer.testing import CliRunner
 
 from swallow.cli.main import app
+from swallow.capability import CapabilityBatch, CapabilityBatchResult, CancelResult
 from swallow.mcp import create_mcp_server
 from swallow.sdk.errors import IngestWaitTimeout
 from swallow.sdk.models import IngestJob, IngestOutputs, IngestResult
@@ -24,13 +25,22 @@ from swallow.sdk.result_mapper import DEFAULT_FULL_CONTENT_BYTES, DEFAULT_PREVIE
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SRC_ROOT = REPO_ROOT / "src"
 MCP_TOOL_NAMES = {
+    "swallow_capabilities_list",
+    "swallow_doctor",
     "swallow_ingest_file",
     "swallow_ingest_url",
     "swallow_ingest_browser_capture",
     "swallow_ingest_archive",
+    "swallow_ingest_batch",
     "swallow_get_job",
+    "swallow_get_batch",
     "swallow_get_result",
+    "swallow_get_batch_result",
     "swallow_wait_for_result",
+    "swallow_wait_for_batch",
+    "swallow_get_artifact",
+    "swallow_cancel_job",
+    "swallow_cancel_batch",
 }
 
 
@@ -50,7 +60,8 @@ def test_mcp_server_exposes_core_tool_set(tmp_path):
 def test_mcp_adapter_boundary_uses_sdk_client_not_core_workers():
     source = (REPO_ROOT / "src" / "swallow" / "mcp" / "server.py").read_text(encoding="utf-8")
 
-    assert "CliIngestClient" in source
+    assert "SwallowCapabilityProvider" in source
+    assert "CliIngestClient" not in source
     assert "IngestRunner" not in source
     assert "swallow.workers" not in source
 
@@ -208,7 +219,7 @@ def test_mcp_invocation_failures_return_tool_errors(tmp_path, monkeypatch):
     assert "Job not found" in errors["unknown"]
     assert "Input should be" in errors["content"]
 
-    monkeypatch.setattr("swallow.mcp.server.CliIngestClient", SlowCliIngestClient)
+    monkeypatch.setattr("swallow.mcp.server.SwallowCapabilityProvider.wait", slow_provider_wait)
     slow_server = make_server(store)
 
     async def timeout_scenario(session: ClientSession) -> str:
@@ -217,6 +228,41 @@ def test_mcp_invocation_failures_return_tool_errors(tmp_path, monkeypatch):
         return result.content[0].text
 
     assert "Timed out waiting for job ing_slow" in run_mcp(slow_server, timeout_scenario)
+
+
+def test_mcp_batch_tools_submit_get_result_and_cancel(tmp_path):
+    store = tmp_path / "store"
+    inputs = store / "inputs"
+    inputs.mkdir(parents=True)
+    (inputs / "a.txt").write_text("# A\n\nmcp batch a", encoding="utf-8")
+    (inputs / "b.txt").write_text("# B\n\nmcp batch b", encoding="utf-8")
+    server = make_server(store)
+
+    async def scenario(session: ClientSession) -> tuple[CapabilityBatch, CapabilityBatch, CancelResult, CapabilityBatchResult]:
+        submitted = await session.call_tool(
+            "swallow_ingest_batch",
+            {"patterns": [str(inputs / "*.txt")], "workers": 1},
+        )
+        batch = CapabilityBatch.model_validate(submitted.structuredContent)
+        read_back = CapabilityBatch.model_validate(
+            (await session.call_tool("swallow_get_batch", {"batch_id": batch.batch_id})).structuredContent
+        )
+        canceled = CancelResult.model_validate(
+            (await session.call_tool("swallow_cancel_batch", {"batch_id": batch.batch_id})).structuredContent
+        )
+        result = CapabilityBatchResult.model_validate(
+            (await session.call_tool("swallow_get_batch_result", {"batch_id": batch.batch_id})).structuredContent
+        )
+        return batch, read_back, canceled, result
+
+    batch, read_back, canceled, result = run_mcp(server, scenario)
+
+    assert batch.status == "queued"
+    assert batch.total == 2
+    assert read_back.batch_id == batch.batch_id
+    assert canceled.status == "canceled"
+    assert result.status == "canceled"
+    assert {artifact.kind for artifact in result.artifacts} >= {"batch_summary", "trace"}
 
 
 def test_mcp_url_invalid_scheme_returns_tool_error(tmp_path):
@@ -295,15 +341,8 @@ def python_cli_command() -> list[str]:
     return [sys.executable, "-c", script]
 
 
-class SlowCliIngestClient:
-    def __init__(self, *args, **kwargs):
-        pass
-
-    def wait(self, job_id: str, **kwargs):
-        raise IngestWaitTimeout(f"Timed out waiting for job {job_id}")
-
-    def shutdown(self, *, wait: bool = True) -> None:
-        pass
+async def slow_provider_wait(self, job_id: str, options=None):
+    raise IngestWaitTimeout(f"Timed out waiting for job {job_id}")
 
 
 def sample_capture() -> dict:
