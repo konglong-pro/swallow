@@ -148,11 +148,46 @@ def test_routes_dynamic_url_to_crawl4ai_worker():
 
 
 @pytest.mark.parametrize(
+    ("url", "expected_first_worker"),
+    [
+        ("https://chatgpt.com/share/abc", "chatgpt_share_worker"),
+        ("https://gemini.google.com/share/abc", "gemini_share_worker"),
+        ("https://g.co/gemini/share/abc", "gemini_share_worker"),
+        ("https://claude.ai/share/abc", "claude_share_worker"),
+        ("https://chat.deepseek.com/share/abc", "deepseek_share_worker"),
+        ("https://mp.weixin.qq.com/s/abc", "wechat_article_worker"),
+        ("https://www.youtube.com/watch?v=abc", "youtube_transcript_worker"),
+    ],
+)
+def test_routes_platform_urls_to_platform_workers(url: str, expected_first_worker: str):
+    route = Router().route(
+        make_input("url.json", "application/json", source_type="url").model_copy(update={"source_url": url})
+    )
+
+    assert route[0] == expected_first_worker
+
+
+def test_routes_youtube_to_asr_fallback_only_when_enabled():
+    route = Router(youtube_asr_enabled=True).route(
+        make_input("url.json", "application/json", source_type="url").model_copy(
+            update={"source_url": "https://www.youtube.com/watch?v=abc"}
+        )
+    )
+
+    assert route == [
+        "youtube_transcript_worker",
+        "quality_checker",
+        "fallback:youtube_asr_worker",
+        "quality_checker",
+        "fallback:playwright_worker",
+        "markdown_normalizer",
+    ]
+
+
+@pytest.mark.parametrize(
     "url",
     [
         "https://chatgpt.com/c/example",
-        "https://www.zhihu.com/question/123",
-        "https://x.com/example/status/123",
     ],
 )
 def test_routes_login_or_restricted_url_to_local_profile_worker(url: str):
@@ -160,6 +195,30 @@ def test_routes_login_or_restricted_url_to_local_profile_worker(url: str):
         make_input("url.json", "application/json", source_type="url").model_copy(update={"source_url": url})
     ) == [
         "playwright_profile_worker",
+        "quality_checker",
+        "fallback:playwright_worker",
+        "markdown_normalizer",
+    ]
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://x.com/example/status/123",
+        "https://x.com/i/article/2061850535708483585",
+        "https://www.xiaohongshu.com/explore/abc",
+        "https://zhuanlan.zhihu.com/p/123",
+        "https://www.zhihu.com/question/123",
+        "https://www.zhihu.com/question/123/answer/456",
+    ],
+)
+def test_removed_platform_urls_use_generic_web_route(url: str):
+    assert Router().route(
+        make_input("url.json", "application/json", source_type="url").model_copy(update={"source_url": url})
+    ) == [
+        "firecrawl_worker",
+        "quality_checker",
+        "fallback:crawl4ai_worker",
         "quality_checker",
         "fallback:playwright_worker",
         "markdown_normalizer",

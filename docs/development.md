@@ -85,6 +85,18 @@ workers:
     enabled: true
     profile_dir: ~/.swallow/browser-profiles/chrome-default
     headless: false
+  gemini_share:
+    enabled: true
+    headless: true
+  wechat_article:
+    enabled: true
+    headless: true
+  youtube_transcript:
+    enabled: true
+  youtube_asr:
+    enabled: false
+    allow_media_download: false
+    max_media_size_bytes: 524288000
 
 limits:
   max_file_size_bytes: 104857600
@@ -111,6 +123,13 @@ URL ingest:
 ```bash
 uv run swallow url https://example.com/article
 ```
+
+Platform URL ingest uses the same command and SDK URL surface. Core routing selects internal platform
+workers for recognized share, article, and transcript URLs; callers should not select platform
+worker names through SDK/provider APIs.
+
+`youtube_asr` is an opt-in policy gate in this phase. It stays disabled by default and refuses to run
+unless media download consent is explicit.
 
 Browser capture and export archive ingest:
 
@@ -183,6 +202,9 @@ uv run --no-sync python scripts/runtime_smoke_all.py --web-url https://example.c
 uv run --no-sync python scripts/runtime_smoke_all.py --web-target playwright --web-target profile
 uv run --no-sync python scripts/runtime_smoke_all.py --asr-audio ./sample.wav
 ```
+
+Platform URL live checks are manual evidence only. Do not add repository tests that depend on live
+platform pages; use deterministic fixtures for parser regression coverage.
 
 ## Diagnostics
 

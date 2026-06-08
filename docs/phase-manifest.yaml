@@ -1,11 +1,11 @@
 current:
   swallow:
-    phase_id: capability-provider-p1
-    title: Swallow Capability Provider P1
+    phase_id: platform-url-ingest
+    title: Platform URL Ingest
     status: completed
-    canonical_spec: docs/capability-provider-p1.md
+    canonical_spec: docs/planning/archive/platform-url-ingest.md
     agent_rules: AGENTS.md
-    release_gate: uv run python scripts/sdk_release_gate.py
+    release_gate: uv run --no-sync pytest -q -m "not network and not performance and not heavy"
     allowed_areas:
       - src/swallow/
       - tests/
@@ -54,5 +54,15 @@ phases:
       - docs/closeout/capability-provider-p1-closeout.md
       - docs/adr/0001-swallow-capability-provider-boundary.md
       - docs/contracts/ingest-contract.md
+    supersedes: []
+    superseded_by: null
+  platform-url-ingest:
+    title: Platform URL Ingest
+    status: completed
+    canonical_spec: docs/planning/archive/platform-url-ingest.md
+    closeout: docs/closeout/platform-url-ingest-closeout.md
+    evidence:
+      - docs/closeout/platform-url-ingest-closeout.md
+      - docs/planning/archive/platform-url-ingest.md
     supersedes: []
     superseded_by: null

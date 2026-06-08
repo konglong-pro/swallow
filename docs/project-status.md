@@ -1,12 +1,13 @@
 # Project Status
 
-Last updated: 2026-06-07
+Last updated: 2026-06-08
 
 ## Current Label
 
 Swallow is an ingest-only toolkit with a locally passing SDK final acceptance gate. Capability
 Provider P1 is completed in this working tree as a thin provider adapter over existing ingest
-capabilities. A versioned release artifact or tag has not been cut.
+capabilities. Platform URL Ingest is also completed in this working tree. A versioned release
+artifact or tag has not been cut.
 
 ## Shipped And Frozen Baseline
 
@@ -24,10 +25,14 @@ capabilities. A versioned release artifact or tag has not been cut.
   cancellation, profiles, policies, and generated manifest/schema artifacts.
 - MCP adapter exposes tools only, backed by `SwallowCapabilityProvider`, with URL ingest disabled by
   default.
+- Platform URL Ingest covers ChatGPT, Gemini, Claude, and DeepSeek share URLs; WeChat public article
+  URLs; YouTube caption transcript extraction; and an opt-in, default-disabled YouTube ASR policy
+  gate. Zhihu, X, and Xiaohongshu have no dedicated platform workers and route as generic web.
 
 ## Active
 
-- No approved implementation phase after Capability Provider P1 closeout.
+- No active implementation phase is currently approved after Platform URL Ingest closeout.
+- Keep SDK/provider surfaces as URL ingest; core routing chooses internal platform workers.
 - Keep backend and worker choices behind provider profiles and policy for follow-up work.
 - Keep HTTP out of the local-first default path and MCP out of provider backends.
 
@@ -48,6 +53,10 @@ capabilities. A versioned release artifact or tag has not been cut.
 - `docs/adr/0001-swallow-capability-provider-boundary.md`: accepted provider boundary decision.
 - `docs/sdk-final-acceptance.md`: current SDK acceptance checklist and latest local gate results.
 - `docs/sdk-agent-project-plan.md`: SDK implementation plan, accepted decisions, and open decisions.
+- `docs/closeout/platform-url-ingest-closeout.md`: Platform URL Ingest closeout and local gate
+  evidence.
+- `docs/planning/archive/platform-url-ingest.md`: archived execution plan for platform-aware URL
+  ingest.
 - `docs/final-qa-2026-05-17.md`: local Windows/Python 3.11 QA evidence for the ingest-core release
   candidate.
 - `.github/workflows/ci.yml`: cross-platform default test matrix, Docker smoke, optional performance,

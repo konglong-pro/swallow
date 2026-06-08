@@ -59,6 +59,30 @@ class TraceWriter:
     def route_selected(self, job: JobRecord, plan: list[str]) -> None:
         self.write("route_selected", job_id=job.id, details={"plan": plan})
 
+    def url_classified(
+        self,
+        job: JobRecord,
+        *,
+        kind: str,
+        platform: str | None,
+        normalized_url: str,
+        confidence: float,
+        needs_redirect_resolution: bool,
+        needs_browser_profile: bool,
+    ) -> None:
+        self.write(
+            "url_classified",
+            job_id=job.id,
+            details={
+                "kind": kind,
+                "platform": platform,
+                "normalized_url": normalized_url,
+                "confidence": confidence,
+                "needs_redirect_resolution": needs_redirect_resolution,
+                "needs_browser_profile": needs_browser_profile,
+            },
+        )
+
     def fallback_selected(
         self,
         job: JobRecord,

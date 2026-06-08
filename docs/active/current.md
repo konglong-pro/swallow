@@ -1,14 +1,14 @@
 # Current Active Work
 
-Last updated: 2026-06-07
+Last updated: 2026-06-08
 Source of current phase: `docs/phase-manifest.yaml`
 
 ## Current State
 
 - Shipped/frozen: ingest core, built-in workers, CLI, FastAPI service, SDK clients, queue backend,
-  hybrid facade, provider-backed MCP adapter, and Capability Provider P1 are implemented in this
-  working tree.
-- Active: no approved implementation phase after Capability Provider P1 closeout.
+  hybrid facade, provider-backed MCP adapter, Capability Provider P1, and Platform URL Ingest are
+  implemented in this working tree.
+- Active: no active implementation phase is currently approved after Platform URL Ingest closeout.
 - Next but not approved: versioned release artifact/tag and package publishing decision.
 
 ## Required Reading For Current Work
@@ -18,6 +18,10 @@ Source of current phase: `docs/phase-manifest.yaml`
 - `docs/contracts/ingest-contract.md`: durable scope, artifact, SDK, trace, and error rules.
 - `docs/adr/0001-swallow-capability-provider-boundary.md`: accepted provider boundary decision.
 - `docs/project-status.md`: compressed shipped/current/open status.
+- `docs/closeout/platform-url-ingest-closeout.md`: completed platform URL ingest behavior, gates, and
+  remaining limitations.
+- `docs/planning/archive/platform-url-ingest.md`: archived implementation plan for platform-aware URL
+  ingest.
 - `docs/sdk-final-acceptance.md`: SDK release gate and accepted final decisions.
 - `docs/sdk-agent-project-plan.md`: detailed SDK implementation history and remaining open decisions.
 - `docs/testing.md`: executable gates and optional heavy/network checks.
@@ -52,4 +56,6 @@ Source of current phase: `docs/phase-manifest.yaml`
 - Treat `docs/sdk-final-acceptance.md` as the source of truth for SDK release gates.
 - Treat `docs/sdk-agent-project-plan.md` as the detailed implementation plan/history, not as a place
   to broaden product scope.
+- Treat `docs/closeout/platform-url-ingest-closeout.md` as the current source of truth for completed
+  platform URL ingest behavior.
 - Keep root `README.md` and `AGENTS.md` compact; add deeper detail to the appropriate `docs/` file.

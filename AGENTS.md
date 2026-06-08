@@ -16,6 +16,7 @@ start here, then follow the linked docs for details.
 - Testing and gates: `docs/testing.md`
 - API and SDK surfaces: `docs/api.md`
 - Durable contract: `docs/contracts/ingest-contract.md`
+- Platform URL ingest closeout: `docs/closeout/platform-url-ingest-closeout.md`
 - Capability Provider P1: `docs/capability-provider-p1.md`
 - Provider boundary ADR: `docs/adr/0001-swallow-capability-provider-boundary.md`
 
@@ -107,6 +108,10 @@ uv run swallow inspect <job_id> --raw --artifacts
 - MCP changes: read `docs/api.md`, `docs/capability-provider-p1.md`, and `docs/sdk-final-acceptance.md`, then work in
   `src/swallow/mcp/server.py`.
 - Queue changes: read `docs/api.md` and `docs/architecture.md`, then work in `src/swallow/core/queue_*` and `src/swallow/sdk/queue.py`.
+- Platform URL ingest changes: read `docs/closeout/platform-url-ingest-closeout.md`,
+  `docs/planning/archive/platform-url-ingest.md`,
+  `docs/contracts/ingest-contract.md`, and `docs/adr/0001-swallow-capability-provider-boundary.md`;
+  keep SDK/provider surfaces as URL ingest and let core routing select internal workers.
 - Documentation changes: preserve the roles described in `docs/active/current.md` and `docs/phase-manifest.yaml`.
 
 ## Non-Negotiable Rules
@@ -129,6 +134,7 @@ uv run swallow inspect <job_id> --raw --artifacts
 - MCP may wrap `SwallowCapabilityProvider`; it must not define a separate capability model.
 - HTTP is not the local-first default provider path.
 - URL ingest in MCP stays disabled unless explicitly enabled.
+- Platform-specific URL workers must not be exposed as SDK/provider worker-selection APIs.
 - Heavy integrations remain optional extras.
 
 ## Do Not Edit Unless Asked
@@ -154,6 +160,8 @@ uv run swallow inspect <job_id> --raw --artifacts
 - `docs/development.md`: optional worker dependencies, config, fixtures, and runtime smoke scripts.
 - `docs/sdk-agent-project-plan.md`: detailed SDK roadmap and implementation history.
 - `docs/sdk-final-acceptance.md`: final SDK acceptance checklist and release commands.
+- `docs/closeout/platform-url-ingest-closeout.md`: completed platform URL ingest behavior, gates, and
+  known platform limitations.
 - `docs/project-status.md`: shipped, frozen, active, next, and remaining release items.
 
 ## Done Means

@@ -44,7 +44,9 @@ input path/url/capture/archive
 - Office, extractable PDFs, HTML, CSV, JSON, XML, and EPUB-style inputs can use MarkItDown.
 - Scanned or low-text PDFs and image inputs route to PaddleOCR when the OCR extra is installed.
 - Audio and video route to faster-whisper with `ffmpeg` normalization.
-- Public URL ingest can use Firecrawl, Crawl4AI, and Playwright fallback.
+- Public URL ingest can use platform-specific workers, Firecrawl, Crawl4AI, and Playwright fallback.
+- Platform-aware URL ingest classifies and routes LLM share links, WeChat articles, and YouTube
+  videos through internal workers before generic fallback.
 - Login-required and restricted URLs route to local browser capture paths: browser capture JSON,
   local persistent Playwright profile capture, or official export archive parsing.
 

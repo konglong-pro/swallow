@@ -19,6 +19,13 @@ uv run --no-sync pytest -q -m concurrency
 uv run --no-sync pytest -q -m integration
 ```
 
+Platform URL ingest focused checks:
+
+```bash
+uv run --no-sync pytest -q tests/test_url_classifier.py tests/test_routing.py tests/test_quality.py
+uv run --no-sync pytest -q tests/test_conversation_share_worker.py tests/test_platform_article_worker.py tests/test_youtube_transcript_worker.py
+```
+
 SDK-focused gates:
 
 ```bash
@@ -74,6 +81,10 @@ See `docs/development.md` for runtime smoke script usage. The full local runtime
 ```bash
 uv run --no-sync python scripts/runtime_smoke_all.py
 ```
+
+Platform URL live checks are not retained as repository tests because public pages can rate-limit,
+require auth, challenge browsers, or change DOM without notice. Record any manual live evidence in
+closeout or status notes instead of adding live platform test files.
 
 ## CI
 

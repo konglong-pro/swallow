@@ -36,11 +36,60 @@ WEB_LOGIN_PIPELINE = [
     "fallback:playwright_worker",
     "markdown_normalizer",
 ]
+CHATGPT_SHARE_PIPELINE = [
+    "chatgpt_share_worker",
+    "quality_checker",
+    "fallback:playwright_profile_worker",
+    "markdown_normalizer",
+]
+GEMINI_SHARE_PIPELINE = [
+    "gemini_share_worker",
+    "quality_checker",
+    "markdown_normalizer",
+]
+CLAUDE_SHARE_PIPELINE = [
+    "claude_share_worker",
+    "quality_checker",
+    "fallback:playwright_profile_worker",
+    "markdown_normalizer",
+]
+DEEPSEEK_SHARE_PIPELINE = [
+    "deepseek_share_worker",
+    "quality_checker",
+    "fallback:playwright_profile_worker",
+    "markdown_normalizer",
+]
+WECHAT_ARTICLE_PIPELINE = [
+    "wechat_article_worker",
+    "quality_checker",
+    "fallback:playwright_worker",
+    "markdown_normalizer",
+]
+YOUTUBE_VIDEO_PIPELINE = [
+    "youtube_transcript_worker",
+    "quality_checker",
+    "fallback:playwright_worker",
+    "markdown_normalizer",
+]
+YOUTUBE_VIDEO_WITH_ASR_PIPELINE = [
+    "youtube_transcript_worker",
+    "quality_checker",
+    "fallback:youtube_asr_worker",
+    "quality_checker",
+    "fallback:playwright_worker",
+    "markdown_normalizer",
+]
 
 
 class Router:
-    def __init__(self, pdf_analyzer: Callable[[str], PdfAnalysis] = analyze_pdf) -> None:
+    def __init__(
+        self,
+        pdf_analyzer: Callable[[str], PdfAnalysis] = analyze_pdf,
+        *,
+        youtube_asr_enabled: bool = False,
+    ) -> None:
         self.pdf_analyzer = pdf_analyzer
+        self.youtube_asr_enabled = youtube_asr_enabled
 
     def route(self, input: WorkerInput) -> list[str]:
         if input.source_type == "url":
@@ -89,10 +138,31 @@ class Router:
             raise InputError("URL ingest requires source_url")
 
         classification = classify_url(url)
-        if classification.kind in {UrlKind.LOGIN_REQUIRED, UrlKind.PARTIAL_LOGIN, UrlKind.RESTRICTED}:
+        if classification.kind == UrlKind.CHATGPT_SHARE:
+            return CHATGPT_SHARE_PIPELINE
+
+        if classification.kind == UrlKind.GEMINI_SHARE:
+            return GEMINI_SHARE_PIPELINE
+
+        if classification.kind == UrlKind.CLAUDE_SHARE:
+            return CLAUDE_SHARE_PIPELINE
+
+        if classification.kind == UrlKind.DEEPSEEK_SHARE:
+            return DEEPSEEK_SHARE_PIPELINE
+
+        if classification.kind == UrlKind.WECHAT_ARTICLE:
+            return WECHAT_ARTICLE_PIPELINE
+
+        if classification.kind == UrlKind.YOUTUBE_VIDEO:
+            return YOUTUBE_VIDEO_WITH_ASR_PIPELINE if self.youtube_asr_enabled else YOUTUBE_VIDEO_PIPELINE
+
+        if classification.kind in {UrlKind.LOGIN_REQUIRED_WEB, UrlKind.RESTRICTED_WEB}:
             return WEB_LOGIN_PIPELINE
 
-        if classification.kind == UrlKind.DYNAMIC:
+        if classification.kind == UrlKind.SHORT_URL:
+            return WEB_DYNAMIC_PIPELINE
+
+        if classification.kind == UrlKind.DYNAMIC_WEB:
             return WEB_DYNAMIC_PIPELINE
 
         return WEB_LEVEL_1_PIPELINE

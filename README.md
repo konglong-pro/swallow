@@ -18,7 +18,7 @@ or knowledge-base management. Agent integrations belong in thin adapters around 
 - Local files: text, Markdown, Office, PDF, HTML, CSV, JSON, XML, EPUB-style inputs.
 - OCR inputs: scanned PDFs and images through the optional PaddleOCR worker.
 - Audio/video: timestamped transcripts through the optional faster-whisper worker.
-- URLs: Firecrawl, Crawl4AI, and Playwright routes for public and dynamic pages.
+- URLs: platform-aware routes plus Firecrawl, Crawl4AI, and Playwright fallback for public and dynamic pages.
 - Local capture: browser extension capture JSON and local Playwright profile capture.
 - Export archives: current ChatGPT export zip parsing.
 
