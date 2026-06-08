@@ -49,6 +49,19 @@ def test_registry_skips_disabled_workers():
     assert registry.has("markitdown_worker") is True
 
 
+def test_opt_in_platform_workers_are_disabled_by_default():
+    registry = default_registry(IngestConfig())
+
+    assert registry.has("youtube_asr_worker") is False
+
+
+def test_opt_in_platform_workers_register_when_enabled():
+    config = IngestConfig.from_mapping({"workers": {"youtube_asr": {"enabled": True}}})
+    registry = default_registry(config)
+
+    assert registry.has("youtube_asr_worker") is True
+
+
 def test_runner_injects_worker_config_params(tmp_path):
     source = tmp_path / "sample.txt"
     source.write_text("hello\n", encoding="utf-8")

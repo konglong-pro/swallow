@@ -31,6 +31,8 @@ jobs:
       - uses: astral-sh/setup-uv@v5
       - name: Install CI dependencies
         run: uv sync --dev --extra ci
+      - name: Check capability provider artifacts
+        run: uv run python scripts/generate_capability_artifacts.py --check
       - name: Run default test suite
         run: uv run pytest -q -m "not network and not performance and not heavy"
       - name: Compile sources

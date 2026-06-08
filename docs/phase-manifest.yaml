@@ -1,0 +1,68 @@
+current:
+  swallow:
+    phase_id: platform-url-ingest
+    title: Platform URL Ingest
+    status: completed
+    canonical_spec: docs/planning/archive/platform-url-ingest.md
+    agent_rules: AGENTS.md
+    release_gate: uv run --no-sync pytest -q -m "not network and not performance and not heavy"
+    allowed_areas:
+      - src/swallow/
+      - tests/
+      - scripts/
+      - docs/
+      - README.md
+      - AGENTS.md
+      - pyproject.toml
+    forbidden_areas:
+      - core agent orchestration
+      - RAG or vector database features
+      - default summarization or LLM cleanup
+      - knowledge-base frontend or memory product behavior
+      - direct Agent selection of SDK backends or internal workers
+      - MCP as a provider backend
+      - HTTP as the default local-first provider path
+      - provider outputs as host truth
+    status_summary: docs/project-status.md
+
+phases:
+  ingest-core-local-rc:
+    title: Ingest core local release candidate
+    status: completed
+    canonical_spec: null
+    closeout: docs/final-qa-2026-05-17.md
+    evidence:
+      - docs/final-qa-2026-05-17.md
+    supersedes: []
+    superseded_by: sdk-hardening-and-integration-polish
+  sdk-hardening-and-integration-polish:
+    title: SDK hardening and integration polish
+    status: frozen
+    canonical_spec: docs/sdk-agent-project-plan.md
+    closeout: null
+    evidence:
+      - docs/sdk-final-acceptance.md
+    supersedes:
+      - ingest-core-local-rc
+    superseded_by: null
+  capability-provider-p1:
+    title: Swallow Capability Provider P1
+    status: completed
+    canonical_spec: docs/capability-provider-p1.md
+    closeout: docs/closeout/capability-provider-p1-closeout.md
+    evidence:
+      - docs/closeout/capability-provider-p1-closeout.md
+      - docs/adr/0001-swallow-capability-provider-boundary.md
+      - docs/contracts/ingest-contract.md
+    supersedes: []
+    superseded_by: null
+  platform-url-ingest:
+    title: Platform URL Ingest
+    status: completed
+    canonical_spec: docs/planning/archive/platform-url-ingest.md
+    closeout: docs/closeout/platform-url-ingest-closeout.md
+    evidence:
+      - docs/closeout/platform-url-ingest-closeout.md
+      - docs/planning/archive/platform-url-ingest.md
+    supersedes: []
+    superseded_by: null

@@ -290,6 +290,82 @@ def test_playwright_profile_worker_returns_markdown_and_render_artifacts(monkeyp
     ]
 
 
+def test_playwright_profile_worker_extracts_platform_share_messages(monkeypatch, tmp_path):
+    html = (Path(__file__).parent / "fixtures" / "web" / "claude_share_visible_text.html").read_text(encoding="utf-8")
+    profile_dir = tmp_path / "profile"
+    seen: dict[str, object] = {}
+
+    def fake_render(
+        url: str,
+        *,
+        profile_dir: Path,
+        job_dir: Path | None = None,
+        headless: bool = False,
+        screenshot: bool = True,
+        timeout_seconds: int = 240,
+        wait_until: str = "networkidle",
+        post_load_wait_ms: int = 0,
+    ) -> RenderedPage:
+        seen["wait_until"] = wait_until
+        seen["post_load_wait_ms"] = post_load_wait_ms
+        html_path = job_dir / "intermediate" / "playwright_profile" / "rendered.html"
+        html_path.parent.mkdir(parents=True, exist_ok=True)
+        html_path.write_text(html, encoding="utf-8")
+        return RenderedPage(
+            html=html,
+            title="Claude",
+            final_url=url,
+            status_code=200,
+            html_path=html_path,
+        )
+
+    monkeypatch.setattr(playwright_profile_module, "render_with_playwright_profile", fake_render)
+
+    result = PlaywrightProfileWorker().run(
+        make_url_input(
+            "https://claude.ai/share/abc",
+            tmp_path / "job",
+            metadata={"profile_dir": str(profile_dir), "headless": True, "screenshot": False},
+        )
+    )
+
+    assert result.status == "success"
+    assert seen == {"wait_until": "domcontentloaded", "post_load_wait_ms": 5000}
+    assert result.metadata["platform"] == "claude"
+    assert result.metadata["url_kind"] == "claude_share"
+    assert result.metadata["auth_mode"] == "local_profile"
+    assert result.metadata["message_count"] == 2
+    assert "To evolve, you must first learn to bury the one you were." in result.markdown
+    assert {"type": "platform_extraction", "path": "intermediate/claude/platform_extraction.json"} in result.artifacts
+
+
+def test_playwright_profile_worker_rejects_platform_share_without_messages(monkeypatch, tmp_path):
+    html = "<html><head><title>Just a moment...</title></head><body><main>Please enable JavaScript.</main></body></html>"
+
+    def fake_render(
+        url: str,
+        *,
+        profile_dir: Path,
+        job_dir: Path | None = None,
+        headless: bool = False,
+        screenshot: bool = True,
+        timeout_seconds: int = 240,
+        wait_until: str = "networkidle",
+        post_load_wait_ms: int = 0,
+    ) -> RenderedPage:
+        return RenderedPage(html=html, title="Just a moment...", final_url=url, status_code=200)
+
+    monkeypatch.setattr(playwright_profile_module, "render_with_playwright_profile", fake_render)
+
+    result = PlaywrightProfileWorker().run(make_url_input("https://claude.ai/share/abc", tmp_path / "job"))
+
+    assert result.status == "failed"
+    assert result.metadata["error_code"] == "PLATFORM_BROWSER_RENDER_REQUIRED"
+    assert result.metadata["message_count"] == 0
+    assert "needs_browser_render" in result.warnings
+    assert "# Just a moment..." in result.markdown
+
+
 def test_playwright_profile_worker_reports_missing_dependency(monkeypatch, tmp_path):
     def missing_dependency(
         url: str,

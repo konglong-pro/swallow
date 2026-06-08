@@ -1,0 +1,1 @@
+{"properties":{"artifact_ref":{"title":"Artifact Ref","type":"string"}},"required":["artifact_ref"],"title":"ArtifactRef","type":"object"}

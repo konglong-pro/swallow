@@ -30,6 +30,7 @@ from swallow.core.registry import WorkerRegistry, default_registry
 from swallow.core.router import Router
 from swallow.core.trace import TraceWriter
 from swallow.core.time import now_iso
+from swallow.detectors.url_classifier import classify_url
 from swallow.detectors.file_type import is_audio_video_file, is_pdf_file
 from swallow.normalizers.markdown_normalizer import (
     MARKDOWN_NORMALIZER_NAME,
@@ -59,7 +60,9 @@ class IngestRunner:
         self.raw_store = RawStore(self.store_root)
         self.job_store = JobStore(self.store_root)
         self.registry = registry or default_registry(self.config)
-        self.router = router or Router()
+        self.router = router or Router(
+            youtube_asr_enabled=self.config.worker_enabled("youtube_asr_worker"),
+        )
         self.writer = writer or MarkdownWriter()
 
     def ingest_file(self, input_path: Path | str) -> IngestRunResult:
@@ -178,16 +181,40 @@ class IngestRunner:
                     "job_dir_rel": job.job_dir,
                 },
             )
+            if job.source_type == "url" and job.source_url:
+                classification = classify_url(job.source_url)
+                trace.url_classified(
+                    job,
+                    kind=classification.kind.value,
+                    platform=classification.platform,
+                    normalized_url=classification.normalized_url,
+                    confidence=classification.confidence,
+                    needs_redirect_resolution=classification.needs_redirect_resolution,
+                    needs_browser_profile=classification.needs_browser_profile,
+                )
+                worker_input.metadata.update(
+                    {
+                        "url_kind": classification.kind.value,
+                        "platform": classification.platform,
+                        "normalized_url": classification.normalized_url,
+                        "needs_redirect_resolution": classification.needs_redirect_resolution,
+                        "needs_browser_profile": classification.needs_browser_profile,
+                    }
+                )
 
             plan = plan_override or self.router.route(worker_input)
             trace.route_selected(job, plan)
             self.job_store.write_manifest(job, raw, status="running", route=plan)
 
             worker_chain: list[str] = []
+            skip_until_fallback = False
 
             for index, step in enumerate(plan):
                 is_fallback_step = step.startswith("fallback:")
+                if skip_until_fallback and not is_fallback_step:
+                    continue
                 if is_fallback_step:
+                    skip_until_fallback = False
                     if quality.metrics and quality.score >= 0.75:
                         continue
                     step = step.removeprefix("fallback:")
@@ -312,6 +339,16 @@ class IngestRunner:
                             "error": error_to_dict(error),
                         }
                     )
+                    if has_later_fallback(plan, index) and bool(getattr(error, "fallback_allowed", False)):
+                        worker_chain.append(f"{worker.name}@{worker.version}")
+                        quality = QualityReport(
+                            score=0.0,
+                            warnings=[worker_exception_warning(error)],
+                            metrics={"worker_exception": type(error).__name__},
+                        )
+                        current_result = None
+                        skip_until_fallback = True
+                        continue
                     raise
 
                 current_result = result
@@ -599,6 +636,12 @@ def worker_result_error_code(result: WorkerResult) -> str:
     if isinstance(value, str) and value.strip():
         return value.strip()
     return "WORKER_RESULT_FAILED"
+
+
+def worker_exception_warning(error: Exception) -> str:
+    payload = error_to_dict(error)
+    value = payload.get("code") or payload.get("type") or "WORKER_FAILED"
+    return str(value)
 
 
 def hash_text(text: str | None) -> str | None:

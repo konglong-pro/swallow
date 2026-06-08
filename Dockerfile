@@ -10,6 +10,8 @@ RUN pip install --no-cache-dir uv
 
 COPY pyproject.toml uv.lock README.md AGENTS.md ./
 COPY docs ./docs
+COPY schemas ./schemas
+COPY swallow.capabilities.json ./
 COPY src ./src
 COPY tests ./tests
 COPY scripts ./scripts
